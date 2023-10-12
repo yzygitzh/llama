@@ -155,6 +155,7 @@ class Llama:
             If logprobs is True, token log probabilities are computed for each generated token.
 
         """
+        print('prompt_tokens', prompt_tokens)
         params = self.model.params
         bsz = len(prompt_tokens)
         assert bsz <= params.max_batch_size, (bsz, params.max_batch_size)
@@ -185,6 +186,8 @@ class Llama:
 
         for cur_pos in range(min_prompt_len, total_len):
             logits = self.model.forward(tokens[:, prev_pos:cur_pos], prev_pos)
+            if cur_pos == min_prompt_len:
+                print('tokens[:, prev_pos:cur_pos]', tokens[:, prev_pos:cur_pos].shape, tokens[:, prev_pos:cur_pos])
             if temperature > 0:
                 probs = torch.softmax(logits[:, -1] / temperature, dim=-1)
                 next_token = sample_top_p(probs, top_p)
@@ -197,6 +200,8 @@ class Llama:
                 input_text_mask[:, cur_pos], tokens[:, cur_pos], next_token
             )
             tokens[:, cur_pos] = next_token
+            if cur_pos == min_prompt_len:
+                print('next_token', next_token)
             if logprobs:
                 token_logprobs[:, prev_pos + 1 : cur_pos + 1] = -F.cross_entropy(
                     input=logits.transpose(1, 2),

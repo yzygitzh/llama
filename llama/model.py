@@ -273,9 +273,16 @@ class Attention(nn.Module):
         bsz, seqlen, _ = x.shape
         xq, xk, xv = self.wq(x), self.wk(x), self.wv(x)
 
+        print('x', x.shape, x.cpu().numpy())
+        print('weight', self.wq.weight.shape, self.wq.weight.cpu().numpy())
+        print('xq', xq.shape, xq.cpu().numpy())
+
         xq = xq.view(bsz, seqlen, self.n_local_heads, self.head_dim)
         xk = xk.view(bsz, seqlen, self.n_local_kv_heads, self.head_dim)
         xv = xv.view(bsz, seqlen, self.n_local_kv_heads, self.head_dim)
+
+        # print('xk', xk.shape, xk.cpu().numpy())
+        # print('xv', xv.shape, xv.cpu().numpy())
 
         xq, xk = apply_rotary_emb(xq, xk, freqs_cis=freqs_cis)
 
@@ -299,6 +306,7 @@ class Attention(nn.Module):
         if mask is not None:
             scores = scores + mask  # (bs, n_local_heads, seqlen, cache_len + seqlen)
         scores = F.softmax(scores.float(), dim=-1).type_as(xq)
+
         output = torch.matmul(scores, values)  # (bs, n_local_heads, seqlen, head_dim)
         output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
         return self.wo(output)
@@ -403,9 +411,13 @@ class TransformerBlock(nn.Module):
             torch.Tensor: Output tensor after applying attention and feedforward layers.
 
         """
-        h = x + self.attention.forward(
-            self.attention_norm(x), start_pos, freqs_cis, mask
+        z = self.attention_norm(x)
+        # print('z in transformer', z.shape, z.cpu().numpy())
+        y = self.attention.forward(
+            z, start_pos, freqs_cis, mask
         )
+        # print('y in transformer', y.shape, y.cpu().numpy())
+        h = x + y
         out = h + self.feed_forward.forward(self.ffn_norm(h))
         return out
 
@@ -478,8 +490,20 @@ class Transformer(nn.Module):
             )
             mask = torch.triu(mask, diagonal=start_pos + 1).type_as(h)
 
-        for layer in self.layers:
+            print('start_pos', start_pos)
+            print('tokens', tokens.shape, tokens)
+            print('h', h.shape, h.cpu().numpy())
+            print('freqs_cis', freqs_cis.shape, freqs_cis.cpu().numpy())
+            print('mask', mask.shape, mask.cpu().numpy())
+
+        for i, layer in enumerate(self.layers):
             h = layer(h, start_pos, freqs_cis, mask)
+            if seqlen > 1 and i == 0:
+                print('h_first', h.shape, h.cpu().numpy())
         h = self.norm(h)
         output = self.output(h).float()
+
+        if seqlen > 1:
+            print('output', output.shape, output.cpu().numpy())
+
         return output
